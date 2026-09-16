@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>レトロコマンドRPG - 魔王討伐編</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'DotGothic16', monospace;
+            background-color: #050508;
+            color: #ffffff;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .pixel-font {
+            font-family: 'Press Start 2P', 'DotGothic16', monospace;
+        }
+        .pixel-box {
+            border: 4px solid #ffffff;
+            box-shadow: inset 0 0 0 4px #000000, 0 0 0 4px #000000;
+            background-color: #000000;
+            border-radius: 4px;
+        }
+        .pixel-box-gold {
+            border: 4px solid #f59e0b;
+            box-shadow: inset 0 0 0 4px #000000, 0 0 0 4px #000000;
+            background-color: #000000;
+            border-radius: 4px;
+        }
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+        }
+        @keyframes shake {
+            0% { transform: translate(2px, 2px) rotate(0deg); }
+            20% { transform: translate(-4px, -2px) rotate(1deg); }
+            40% { transform: translate(2px, -3px) rotate(0deg); }
+            60% { transform: translate(-4px, 2px) rotate(-1deg); }
+            80% { transform: translate(-2px, -2px) rotate(1deg); }
+            100% { transform: translate(2px, -2px) rotate(0deg); }
+        }
+        .animate-shake {
+            animation: shake 0.35s ease-in-out;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            50% { opacity: 1; transform: translateY(-25px) scale(1.25); }
+            100% { opacity: 0; transform: translateY(-45px) scale(1); }
+        }
+        .damage-popup {
+            position: absolute;
+            animation: floatUp 0.85s ease-out forwards;
+            pointer-events: none;
+            font-weight: bold;
+            text-shadow: 2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000;
+            z-index: 60;
+        }
+        .enemy-target {
+            cursor: pointer;
+            transition: transform 0.15s ease, filter 0.15s ease;
+        }
+        .enemy-target:hover {
+            transform: scale(1.08);
+            filter: drop-shadow(0 0 10px rgba(234, 179, 8, 0.8));
+        }
+        .enemy-selected {
+            filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.9)) !important;
+            transform: scale(1.06);
+        }
+        /* VFX Overlays */
+        @keyframes lightningStrike {
+            0% { opacity: 0; background-color: rgba(255, 255, 255, 0); }
+            20% { opacity: 0.9; background-color: rgba(234, 179, 8, 0.6); }
+            40% { opacity: 0.2; background-color: rgba(255, 255, 255, 0.8); }
+            60% { opacity: 0.95; background-color: rgba(59, 130, 246, 0.7); }
+            100% { opacity: 0; background-color: rgba(0, 0, 0, 0); }
+        }
+        .lightning-vfx {
+            animation: lightningStrike 0.5s ease-out forwards;
+        }
+        @keyframes fireBlast {
+            0% { opacity: 0; background-color: rgba(239, 68, 68, 0); }
+            50% { opacity: 0.75; background-color: rgba(239, 68, 68, 0.6); }
+            100% { opacity: 0; background-color: rgba(0, 0, 0, 0); }
+        }
+        .fire-vfx {
+            animation: fireBlast 0.45s ease-out forwards;
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-2 sm:p-4 select-none">
+
+    <div id="game-container" class="w-full max-w-3xl flex flex-col gap-3 relative">
+        
+        <!-- TOP HEADER -->
+        <div class="flex justify-between items-center pixel-box p-3 bg-gray-900 text-xs sm:text-sm">
+            <div class="flex items-center gap-2">
+                <span class="text-yellow-400 font-bold">🏰 FL: <span id="floor-num">1</span>F</span>
+                <span class="text-gray-400">|</span>
+                <span id="location-name" class="text-gray-200">魔王城 階層参入</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <button id="sound-btn" onclick="toggleSound()" class="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 text-xs flex items-center gap-1 transition">
+                    <span id="sound-icon">🔊</span> SOUND: <span id="sound-text">ON</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- OPENING CINEMATIC OVERLAY -->
+        <div id="opening-screen" class="pixel-box p-6 bg-black min-h-[460px] flex flex-col justify-between items-center text-center">
+            <div class="text-yellow-400 text-xl sm:text-2xl font-bold tracking-widest my-2 animate-pulse">
+                ❖ レトロコマンドRPG ❖
+            </div>
+            <div class="text-red-500 text-xs sm:text-sm font-bold tracking-wider">〜 魔王ダークロード討伐編 〜</div>
+            
+            <div id="op-text-box" class="w-full max-w-lg text-left text-sm sm:text-base leading-relaxed text-gray-200 space-y-3 my-3 p-4 bg-gray-950 border border-gray-800 rounded min-h-[220px]">
+                <p id="op-line-1" class="opacity-0 transition-opacity duration-700">暗黒の魔王が目覚め、世界は再び混沌に包まれた...</p>
+                <p id="op-line-2" class="opacity-0 transition-opacity duration-700">国王の命を受け、伝説の三人の勇士が立ち上がる。</p>
+                <p id="op-line-3" class="opacity-0 transition-opacity duration-700">
+                    <span class="text-yellow-400">【勇者】</span>高い攻撃力と全体閃光剣技「ギガブレイク」<br>
+                    <span class="text-blue-400">【魔法使い】</span>「メラゾーマ」と「イオナズン」の圧倒的魔法力<br>
+                    <span class="text-green-400">【僧侶】</span>味方を癒やす「ベホマ」「ベホマラー」の要
+                </p>
+                <p id="op-line-4" class="opacity-0 transition-opacity duration-700 text-yellow-300 font-bold">
+                    襲い来る魔物の群れを踏破し、最奥に潜む魔王を絶滅させよ！
+                </p>
+            </div>
+
+            <button id="start-game-btn" onclick="startGame()" class="pixel-box-gold hover:bg-yellow-900 text-yellow-300 px-8 py-3 font-bold text-sm sm:text-base transition-all hover:scale-105 active:scale-95 shadow-lg">
+                ⚔️ 冒険を開始する
+            </button>
+        </div>
+
+        <!-- MAIN BATTLE INTERFACE -->
+        <div id="battle-screen" class="hidden flex-col gap-3">
+            
+            <!-- STAGE / ENEMIES DISPLAY -->
+            <div id="battle-stage" class="pixel-box relative h-64 sm:h-80 w-full overflow-hidden flex flex-col justify-between p-4 bg-gradient-to-b from-slate-950 via-slate-900 to-black scanlines">
+                <div id="vfx-container" class="absolute inset-0 pointer-events-none z-40"></div>
+                <div id="damage-container" class="absolute inset-0 pointer-events-none z-50"></div>
+
+                <!-- TOP STATUS & TARGET HINT -->
+                <div class="flex justify-between items-center z-10">
+                    <div id="target-hint" class="bg-black/80 px-3 py-1 border border-yellow-500/50 rounded text-xs text-yellow-300">
+                        🎯 攻撃対象: <span id="target-name-display" class="font-bold text-white">---</span>
+                    </div>
+                    <div id="turn-badge" class="bg-yellow-500 text-black font-bold px-3 py-0.5 text-xs rounded">
+                        コマンド選択中
+                    </div>
+                </div>
+
+                <!-- ENEMIES CONTAINER (MULTI-ENEMY SUPPORT) -->
+                <div id="enemies-container" class="flex-1 flex items-center justify-center gap-3 sm:gap-6 relative my-2 z-10">
+                    <!-- Dynamic Enemy Graphics inserted via JS -->
+                </div>
+
+                <!-- PARTY STATUS DISPLAY (3 HEROES) -->
+                <div id="party-status-container" class="grid grid-cols-3 gap-2 z-10 text-xs bg-black/85 p-2 rounded border border-gray-700">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+
+            <!-- MESSAGE LOG WINDOW -->
+            <div class="pixel-box p-3 h-24 overflow-y-auto text-xs sm:text-sm leading-relaxed" id="message-log">
+                <div class="text-yellow-300">★ 冒険が始まった！コマンドを選択して行動しよう。</div>
+            </div>
+
+            <!-- COMMAND INPUT AREA -->
+            <div id="command-panel" class="pixel-box p-3 bg-gray-950">
+                <!-- Turn Action Selection Header -->
+                <div id="action-prompt" class="text-xs text-gray-400 mb-2 flex justify-between items-center">
+                    <span>選択中: <span id="current-actor-name" class="text-yellow-400 font-bold">勇者</span></span>
+                    <span id="actor-step-indicator" class="text-gray-500 font-mono">1 / 3</span>
+                </div>
+
+                <!-- Main Commands -->
+                <div id="main-commands" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <button onclick="selectCommand('attack')" class="cmd-btn pixel-box hover:bg-red-950 py-2.5 text-center text-xs sm:text-sm font-bold border-red-800 flex items-center justify-center gap-1 transition">
+                        ⚔️ たたかう
+                    </button>
+                    <button onclick="showSkillSubmenu()" class="cmd-btn pixel-box hover:bg-blue-950 py-2.5 text-center text-xs sm:text-sm font-bold border-blue-800 flex items-center justify-center gap-1 transition">
+                        🪄 じゅもん・とくぎ
+                    </button>
+                    <button onclick="selectCommand('guard')" class="cmd-btn pixel-box hover:bg-amber-950 py-2.5 text-center text-xs sm:text-sm font-bold border-amber-800 flex items-center justify-center gap-1 transition">
+                        🛡️ ぼうぎょ
+                    </button>
+                    <button id="cancel-btn" onclick="undoLastCommand()" class="cmd-btn pixel-box hover:bg-gray-800 py-2.5 text-center text-xs sm:text-sm text-gray-400 border-gray-600 flex items-center justify-center gap-1 transition">
+                        ↩️ ひとつ戻る
+                    </button>
+                </div>
+
+                <!-- Skill / Magic Submenu -->
+                <div id="skill-commands" class="hidden grid-cols-2 gap-2">
+                    <!-- Dynamic skill buttons injected based on actor class -->
+                </div>
+
+                <!-- Next Stage / Victory Controls -->
+                <div id="next-stage-panel" class="hidden flex-col gap-2">
+                    <button id="next-btn" onclick="nextFloor()" class="w-full pixel-box-gold hover:bg-yellow-900 text-yellow-300 py-3 font-bold text-center text-sm animate-pulse">
+                        🚪 次のフロアへ進む (全員のHP/MP全回復)
+                    </button>
+                </div>
+
+                <!-- Game Over Controls -->
+                <div id="restart-panel" class="hidden flex-col gap-2">
+                    <button onclick="restartGame()" class="w-full pixel-box hover:bg-red-900 text-red-300 py-3 font-bold text-center text-sm">
+                        🔄 パーティを再編成して再挑戦する
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let soundEnabled = true;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+        }
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            initAudio();
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'attack') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.12);
+                gain.gain.setValueAtTime(0.35, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.12);
+                osc.start(now);
+                osc.stop(now + 0.12);
+            } else if (type === 'thunder') {
+                // Gigabreak sound
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.setValueAtTime(800, now + 0.1);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'magic') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(500, now);
+                osc.frequency.setValueAtTime(750, now + 0.08);
+                osc.frequency.setValueAtTime(1000, now + 0.16);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            } else if (type === 'heal') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(450, now);
+                osc.frequency.linearRampToValueAtTime(950, now + 0.3);
+                gain.gain.setValueAtTime(0.35, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'damage') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(130, now);
+                osc.frequency.setValueAtTime(65, now + 0.08);
+                gain.gain.setValueAtTime(0.35, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'victory') {
+                const notes = [523.25, 523.25, 523.25, 659.25, 783.99, 1046.50];
+                let offset = 0;
+                notes.forEach((freq) => {
+                    const noteOsc = audioCtx.createOscillator();
+                    const noteGain = audioCtx.createGain();
+                    noteOsc.type = 'triangle';
+                    noteOsc.frequency.setValueAtTime(freq, now + offset);
+                    noteGain.gain.setValueAtTime(0.25, now + offset);
+                    noteGain.gain.linearRampToValueAtTime(0.01, now + offset + 0.16);
+                    noteOsc.connect(noteGain);
+                    noteGain.connect(audioCtx.destination);
+                    noteOsc.start(now + offset);
+                    noteOsc.stop(now + offset + 0.16);
+                    offset += 0.12;
+                });
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            document.getElementById('sound-text').innerText = soundEnabled ? 'ON' : 'OFF';
+            document.getElementById('sound-icon').innerText = soundEnabled ? '🔊' : '🔇';
+        }
+
+        const ENEMY_TYPES = {
+            SLIME: {
+                name: "スライム",
+                hp: 60, atk: 14, def: 3, exp: 15,
+                svg: `<svg viewBox="0 0 100 100" class="w-16 h-16 sm:w-20 sm:h-20"><path d="M50 20 Q80 20 85 55 Q90 80 50 80 Q10 80 15 55 Q20 20 50 20 Z" fill="#3b82f6" stroke="#1d4ed8" stroke-width="4"/><circle cx="38" cy="45" r="4" fill="#fff"/><circle cx="62" cy="45" r="4" fill="#fff"/><circle cx="39" cy="45" r="2" fill="#000"/><circle cx="63" cy="45" r="2" fill="#000"/></svg>`
+            },
+            GOBLIN: {
+                name: "ゴブリン",
+                hp: 95, atk: 22, def: 5, exp: 30,
+                svg: `<svg viewBox="0 0 100 100" class="w-20 h-20 sm:w-24 sm:h-24"><polygon points="15,35 35,45 20,20" fill="#15803d"/><polygon points="85,35 65,45 80,20" fill="#15803d"/><ellipse cx="50" cy="50" rx="30" ry="25" fill="#22c55e" stroke="#14532d" stroke-width="4"/><circle cx="40" cy="45" r="5" fill="#facc15"/><circle cx="60" cy="45" r="5" fill="#facc15"/><circle cx="40" cy="45" r="2" fill="#000"/><circle cx="60" cy="45" r="2" fill="#000"/></svg>`
+            },
+            DRAKE: {
+                name: "ファイヤードレイク",
+                hp: 130, atk: 28, def: 7, exp: 50,
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 sm:w-28 sm:h-28"><path d="M20 70 Q 50 10 80 70 Z" fill="#b91c1c" stroke="#7f1d1d" stroke-width="4"/><polygon points="30,30 20,10 40,25" fill="#f59e0b"/><polygon points="70,30 80,10 60,25" fill="#f59e0b"/><circle cx="40" cy="45" r="4" fill="#facc15"/><circle cx="60" cy="45" r="4" fill="#facc15"/></svg>`
+            },
+            SKELETON: {
+                name: "スケルトンナイト",
+                hp: 120, atk: 30, def: 6, exp: 45,
+                svg: `<svg viewBox="0 0 100 100" class="w-20 h-20 sm:w-24 sm:h-24"><ellipse cx="50" cy="40" rx="22" ry="20" fill="#e5e7eb" stroke="#9ca3af" stroke-width="3"/><rect x="42" y="60" width="16" height="30" fill="#e5e7eb"/><circle cx="42" cy="38" r="4" fill="#000"/><circle cx="58" cy="38" r="4" fill="#000"/><path d="M 40 50 L 60 50" stroke="#000" stroke-width="3"/></svg>`
+            },
+            DEMON: {
+                name: "シャドウジェネラル",
+                hp: 210, atk: 36, def: 10, exp: 100,
+                svg: `<svg viewBox="0 0 100 100" class="w-24 h-24 sm:w-28 sm:h-28"><polygon points="30,20 10,5 25,35" fill="#9333ea"/><polygon points="70,20 90,5 75,35" fill="#9333ea"/><circle cx="50" cy="45" r="26" fill="#6b21a8" stroke="#3b0764" stroke-width="4"/><circle cx="40" cy="40" r="4" fill="#06b6d4"/><circle cx="60" cy="40" r="4" fill="#06b6d4"/></svg>`
+            },
+            MAOU: {
+                name: "魔王ダークロード",
+                hp: 480, atk: 45, def: 14, exp: 600,
+                svg: `<svg viewBox="0 0 100 100" class="w-32 h-32 sm:w-36 sm:h-36"><polygon points="20,30 30,5 45,25 50,0 55,25 70,5 80,30" fill="#f59e0b"/><path d="M20 35 L80 35 L75 85 L50 95 L25 85 Z" fill="#111827" stroke="#dc2626" stroke-width="4"/><polygon points="35,45 45,48 35,52" fill="#06b6d4"/><polygon points="65,45 55,48 65,52" fill="#06b6d4"/></svg>`
+            }
+        };
+
+        const STAGE_ENCOUNTERS = [
+            [ENEMY_TYPES.SLIME, ENEMY_TYPES.SLIME], // Floor 1
+            [ENEMY_TYPES.GOBLIN, ENEMY_TYPES.SLIME, ENEMY_TYPES.GOBLIN], // Floor 2
+            [ENEMY_TYPES.DRAKE, ENEMY_TYPES.SKELETON], // Floor 3
+            [ENEMY_TYPES.DEMON, ENEMY_TYPES.DRAKE, ENEMY_TYPES.SKELETON], // Floor 4
+            [ENEMY_TYPES.DEMON, ENEMY_TYPES.MAOU, ENEMY_TYPES.DEMON] // Floor 5 (Boss)
+        ];
+
+        let party = [
+            {
+                id: 0,
+                name: "勇者",
+                job: "hero",
+                hp: 120, maxHp: 120,
+                mp: 40, maxMp: 40,
+                atk: 38, def: 18,
+                skills: [
+                    { name: "ギガブレイク", cost: 12, type: "all_damage", power: 2.5, desc: "敵全体に雷の極大一撃" },
+                    { name: "火炎斬り", cost: 5, type: "single_damage", power: 1.6, desc: "炎属性の単体斬撃" }
+                ]
+            },
+            {
+                id: 1,
+                name: "魔法使い",
+                job: "mage",
+                hp: 95, maxHp: 95,
+                mp: 70, maxMp: 70,
+                atk: 28, def: 12,
+                skills: [
+                    { name: "メラゾーマ", cost: 10, type: "single_damage", power: 2.8, desc: "単体極大火炎" },
+                    { name: "イオナズン", cost: 16, type: "all_damage", power: 1.8, desc: "敵全体大爆発魔法" }
+                ]
+            },
+            {
+                id: 2,
+                name: "僧侶",
+                job: "cleric",
+                hp: 105, maxHp: 105,
+                mp: 60, maxMp: 60,
+                atk: 25, def: 15,
+                skills: [
+                    { name: "ベホマ", cost: 8, type: "single_heal", power: 90, desc: "味方単体大回復" },
+                    { name: "ベホマラー", cost: 16, type: "all_heal", power: 55, desc: "味方全体回復" }
+                ]
+            }
+        ];
+
+        let currentFloor = 1;
+        let activeEnemies = [];
+        let selectedTargetIndex = 0;
+        let currentActorIndex = 0;
+        let turnCommands = [];
+        let isPlayerTurnPhase = true;
+        let isBattleEnded = false;
+
+        window.onload = function() {
+            setTimeout(() => document.getElementById('op-line-1').classList.remove('opacity-0'), 300);
+            setTimeout(() => document.getElementById('op-line-2').classList.remove('opacity-0'), 1200);
+            setTimeout(() => document.getElementById('op-line-3').classList.remove('opacity-0'), 2100);
+            setTimeout(() => document.getElementById('op-line-4').classList.remove('opacity-0'), 3000);
+        };
+
+        function startGame() {
+            document.getElementById('opening-screen').classList.add('hidden');
+            document.getElementById('battle-screen').classList.remove('hidden');
+            document.getElementById('battle-screen').classList.add('flex');
+            initFloor();
+        }
+
+        function initFloor() {
+            const templates = STAGE_ENCOUNTERS[Math.min(currentFloor - 1, STAGE_ENCOUNTERS.length - 1)];
+            activeEnemies = templates.map((tmpl, idx) => ({
+                id: idx,
+                name: `${tmpl.name}${templates.length > 1 ? [' A', ' B', ' C'][idx] : ''}`,
+                hp: tmpl.hp,
+                maxHp: tmpl.hp,
+                atk: tmpl.atk,
+                def: tmpl.def,
+                exp: tmpl.exp,
+                svg: tmpl.svg,
+                isAlive: true
+            }));
+
+            document.getElementById('floor-num').innerText = currentFloor;
+            isBattleEnded = false;
+            turnCommands = [];
+            currentActorIndex = 0;
+
+            selectedTargetIndex = activeEnemies.findIndex(e => e.isAlive);
+
+            document.getElementById('next-stage-panel').classList.add('hidden');
+            document.getElementById('restart-panel').classList.add('hidden');
+            document.getElementById('main-commands').classList.remove('hidden');
+
+            renderEnemies();
+            renderPartyStatus();
+            startPartyCommandInput();
+            
+            logMessage(`⚔️ フロア ${currentFloor}: 敵グループが出現した！`, 'text-yellow-300 font-bold');
+        }
+
+        function renderEnemies() {
+            const container = document.getElementById('enemies-container');
+            container.innerHTML = '';
+
+            activeEnemies.forEach((enemy, index) => {
+                if (!enemy.isAlive) return;
+
+                const wrapper = document.createElement('div');
+                wrapper.className = `enemy-target flex flex-col items-center ${index === selectedTargetIndex ? 'enemy-selected' : ''}`;
+                wrapper.onclick = () => setTarget(index);
+
+                wrapper.innerHTML = `
+                    <div class="text-[11px] sm:text-xs text-red-300 font-bold mb-1 bg-black/80 px-2 py-0.5 rounded border border-gray-700">${enemy.name}</div>
+                    <div class="w-16 sm:w-20 bg-gray-800 h-1.5 rounded-full overflow-hidden border border-gray-600 mb-2">
+                        <div class="bg-red-500 h-full transition-all duration-300" style="width: ${(enemy.hp / enemy.maxHp) * 100}%"></div>
+                    </div>
+                    ${enemy.svg}
+                `;
+                container.appendChild(wrapper);
+            });
+
+            updateTargetDisplay();
+        }
+
+        function setTarget(index) {
+            if (activeEnemies[index] && activeEnemies[index].isAlive) {
+                selectedTargetIndex = index;
+                renderEnemies();
+                playSound('attack');
+            }
+        }
+
+        function updateTargetDisplay() {
+            const currentTarget = activeEnemies[selectedTargetIndex];
+            if (currentTarget && currentTarget.isAlive) {
+                document.getElementById('target-name-display').innerText = currentTarget.name;
+            } else {
+                const nextAlive = activeEnemies.findIndex(e => e.isAlive);
+                if (nextAlive !== -1) {
+                    selectedTargetIndex = nextAlive;
+                    document.getElementById('target-name-display').innerText = activeEnemies[nextAlive].name;
+                } else {
+                    document.getElementById('target-name-display').innerText = "なし";
+                }
+            }
+        }
+
+        function renderPartyStatus() {
+            const container = document.getElementById('party-status-container');
+            container.innerHTML = '';
+
+            party.forEach((hero, index) => {
+                const isCurrentActor = isPlayerTurnPhase && index === currentActorIndex && !isBattleEnded;
+                const card = document.createElement('div');
+                card.className = `p-1.5 rounded border ${isCurrentActor ? 'border-yellow-400 bg-yellow-950/30 scale-102' : 'border-gray-800 bg-black/50'} ${hero.hp <= 0 ? 'opacity-40' : ''}`;
+
+                card.innerHTML = `
+                    <div class="font-bold text-gray-200 flex justify-between text-[11px] sm:text-xs">
+                        <span>${hero.name}</span>
+                        ${hero.hp <= 0 ? '<span class="text-red-500 font-bold">戦闘不能</span>' : ''}
+                    </div>
+                    <div class="text-[10px] text-gray-400">HP: <span class="${hero.hp < hero.maxHp * 0.3 ? 'text-red-400 font-bold' : 'text-white'}">${hero.hp}/${hero.maxHp}</span></div>
+                    <div class="w-full bg-gray-800 h-1.5 rounded overflow-hidden mb-1">
+                        <div class="bg-green-500 h-full transition-all" style="width: ${Math.max(0, (hero.hp / hero.maxHp) * 100)}%"></div>
+                    </div>
+                    <div class="text-[10px] text-gray-400">MP: <span class="text-blue-300">${hero.mp}/${hero.maxMp}</span></div>
+                    <div class="w-full bg-gray-800 h-1.5 rounded overflow-hidden">
+                        <div class="bg-blue-400 h-full transition-all" style="width: ${Math.max(0, (hero.mp / hero.maxMp) * 100)}%"></div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function logMessage(msg, colorClass = 'text-white') {
+            const logBox = document.getElementById('message-log');
+            const entry = document.createElement('div');
+            entry.className = `${colorClass} my-0.5`;
+            entry.innerHTML = msg;
+            logBox.appendChild(entry);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function triggerDamagePopup(amount, isHeal = false) {
+            const container = document.getElementById('damage-container');
+            const popup = document.createElement('div');
+            popup.className = `damage-popup pixel-font text-lg sm:text-xl left-1/2 top-1/2 -translate-x-1/2 ${
+                isHeal ? 'text-green-400' : 'text-red-500'
+            }`;
+            popup.innerText = isHeal ? `+${amount}` : `-${amount}`;
+            container.appendChild(popup);
+            setTimeout(() => popup.remove(), 850);
+        }
+
+        function triggerVFX(type) {
+            const stage = document.getElementById('battle-stage');
+            const vfxContainer = document.getElementById('vfx-container');
+            stage.classList.remove('animate-shake');
+
+            if (type === 'thunder') {
+                vfxContainer.className = 'absolute inset-0 pointer-events-none z-40 lightning-vfx';
+                stage.classList.add('animate-shake');
+                setTimeout(() => {
+                    vfxContainer.className = 'absolute inset-0 pointer-events-none z-40';
+                    stage.classList.remove('animate-shake');
+                }, 500);
+            } else if (type === 'fire') {
+                vfxContainer.className = 'absolute inset-0 pointer-events-none z-40 fire-vfx';
+                stage.classList.add('animate-shake');
+                setTimeout(() => {
+                    vfxContainer.className = 'absolute inset-0 pointer-events-none z-40';
+                    stage.classList.remove('animate-shake');
+                }, 450);
+            } else if (type === 'shake') {
+                stage.classList.add('animate-shake');
+                setTimeout(() => stage.classList.remove('animate-shake'), 350);
+            }
+        }
+
+        function startPartyCommandInput() {
+            isPlayerTurnPhase = true;
+            while (currentActorIndex < party.length && party[currentActorIndex].hp <= 0) {
+                currentActorIndex++;
+            }
+
+            if (currentActorIndex >= party.length) {
+                executeBattleTurn();
+                return;
+            }
+
+            const actor = party[currentActorIndex];
+            document.getElementById('current-actor-name').innerText = `${actor.name}`;
+            document.getElementById('actor-step-indicator').innerText = `${currentActorIndex + 1} / ${party.length}`;
+            document.getElementById('turn-badge').innerText = "コマンド入力中";
+
+            hideSkillSubmenu();
+            renderPartyStatus();
+        }
+
+        function selectCommand(type, skillData = null) {
+            if (!isPlayerTurnPhase || isBattleEnded) return;
+
+            const actor = party[currentActorIndex];
+
+            if (skillData && actor.mp < skillData.cost) {
+                logMessage(`❌ MPが足りない！`, 'text-gray-400');
+                return;
+            }
+
+            turnCommands.push({
+                actorIndex: currentActorIndex,
+                type: type,
+                skill: skillData,
+                targetIndex: selectedTargetIndex
+            });
+
+            playSound('attack');
+            currentActorIndex++;
+            startPartyCommandInput();
+        }
+
+        function undoLastCommand() {
+            if (turnCommands.length === 0 || !isPlayerTurnPhase) return;
+            turnCommands.pop();
+            currentActorIndex--;
+            while (currentActorIndex > 0 && party[currentActorIndex].hp <= 0) {
+                currentActorIndex--;
+            }
+            startPartyCommandInput();
+        }
+
+        function showSkillSubmenu() {
+            const actor = party[currentActorIndex];
+            const skillBox = document.getElementById('skill-commands');
+            skillBox.innerHTML = '';
+
+            actor.skills.forEach(skill => {
+                const btn = document.createElement('button');
+                btn.className = 'cmd-btn pixel-box hover:bg-blue-950 py-2 px-3 text-left text-xs flex justify-between items-center border-blue-700 transition';
+                btn.onclick = () => selectCommand('skill', skill);
+                btn.innerHTML = `
+                    <span>✨ ${skill.name} <span class="text-[10px] text-gray-400">(${skill.desc})</span></span>
+                    <span class="text-blue-300 font-mono">${skill.cost} MP</span>
+                `;
+                skillBox.appendChild(btn);
+            });
+
+            const backBtn = document.createElement('button');
+            backBtn.className = 'cmd-btn pixel-box hover:bg-gray-800 py-2 px-3 text-center text-xs text-gray-400 border-gray-600 transition';
+            backBtn.onclick = hideSkillSubmenu;
+            backBtn.innerText = '↩️ もどる';
+            skillBox.appendChild(backBtn);
+
+            document.getElementById('main-commands').classList.add('hidden');
+            skillBox.classList.remove('hidden');
+            skillBox.classList.add('grid');
+        }
+
+        function hideSkillSubmenu() {
+            document.getElementById('skill-commands').classList.add('hidden');
+            document.getElementById('skill-commands').classList.remove('grid');
+            document.getElementById('main-commands').classList.remove('hidden');
+        }
+
+        async function executeBattleTurn() {
+            isPlayerTurnPhase = false;
+            document.getElementById('main-commands').classList.add('hidden');
+            document.getElementById('turn-badge').innerText = "戦闘進行中...";
+            renderPartyStatus();
+
+            // 1. Execute Player Actions
+            for (const cmd of turnCommands) {
+                const actor = party[cmd.actorIndex];
+                if (actor.hp <= 0) continue;
+
+                if (cmd.type === 'attack') {
+                    let target = activeEnemies[cmd.targetIndex];
+                    if (!target || !target.isAlive) {
+                        target = activeEnemies.find(e => e.isAlive);
+                    }
+                    if (!target) break;
+
+                    const damage = Math.max(10, Math.floor(actor.atk * (1.0 + Math.random() * 0.3) - target.def / 2));
+                    target.hp = Math.max(0, target.hp - damage);
+                    if (target.hp === 0) target.isAlive = false;
+
+                    playSound('attack');
+                    triggerVFX('shake');
+                    triggerDamagePopup(damage);
+                    logMessage(`🗡️ ${actor.name} の攻撃！ ${target.name} に <span class="text-yellow-300 font-bold">${damage}</span> のダメージ！`);
+                    renderEnemies();
+
+                } else if (cmd.type === 'skill') {
+                    actor.mp -= cmd.skill.cost;
+
+                    if (cmd.skill.name === "ギガブレイク") {
+                        playSound('thunder');
+                        triggerVFX('thunder');
+                        logMessage(`⚡ ${actor.name} の【ギガブレイク】！ 天地を割る雷撃が敵全体を襲う！`, 'text-yellow-300 font-bold');
+                        
+                        activeEnemies.forEach(target => {
+                            if (target.isAlive) {
+                                const damage = Math.floor(actor.atk * cmd.skill.power * (0.9 + Math.random() * 0.25));
+                                target.hp = Math.max(0, target.hp - damage);
+                                if (target.hp === 0) target.isAlive = false;
+                            }
+                        });
+                        renderEnemies();
+
+                    } else if (cmd.skill.type === 'single_damage') {
+                        let target = activeEnemies[cmd.targetIndex];
+                        if (!target || !target.isAlive) target = activeEnemies.find(e => e.isAlive);
+                        if (!target) break;
+
+                        const damage = Math.floor(actor.atk * cmd.skill.power * (0.95 + Math.random() * 0.25));
+                        target.hp = Math.max(0, target.hp - damage);
+                        if (target.hp === 0) target.isAlive = false;
+
+                        playSound('magic');
+                        triggerVFX('fire');
+                        triggerDamagePopup(damage);
+                        logMessage(`🔥 ${actor.name} の【${cmd.skill.name}】！ ${target.name} に <span class="text-red-400 font-bold">${damage}</span> のダメージ！`);
+                        renderEnemies();
+
+                    } else if (cmd.skill.type === 'all_damage') {
+                        playSound('magic');
+                        triggerVFX('fire');
+                        logMessage(`💥 ${actor.name} の【${cmd.skill.name}】！ 敵全体を大爆発が包み込む！`, 'text-cyan-300');
+                        activeEnemies.forEach(target => {
+                            if (target.isAlive) {
+                                const damage = Math.floor(actor.atk * cmd.skill.power * (0.85 + Math.random() * 0.3));
+                                target.hp = Math.max(0, target.hp - damage);
+                                if (target.hp === 0) target.isAlive = false;
+                            }
+                        });
+                        renderEnemies();
+
+                    } else if (cmd.skill.type === 'single_heal') {
+                        const aliveParty = party.filter(p => p.hp > 0);
+                        aliveParty.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp));
+                        const targetAlly = aliveParty[0];
+                        if (targetAlly) {
+                            targetAlly.hp = Math.min(targetAlly.maxHp, targetAlly.hp + cmd.skill.power);
+                            playSound('heal');
+                            triggerDamagePopup(cmd.skill.power, true);
+                            logMessage(`✨ ${actor.name} の【${cmd.skill.name}】！ ${targetAlly.name} のHPが <span class="text-green-400 font-bold">${cmd.skill.power}</span> 回復！`);
+                        }
+
+                    } else if (cmd.skill.type === 'all_heal') {
+                        playSound('heal');
+                        logMessage(`✨ ${actor.name} の【${cmd.skill.name}】！ 聖なる光がパーティ全員を癒やした！`, 'text-green-300 font-bold');
+                        party.forEach(hero => {
+                            if (hero.hp > 0) {
+                                hero.hp = Math.min(hero.maxHp, hero.hp + cmd.skill.power);
+                            }
+                        });
+                    }
+                } else if (cmd.type === 'guard') {
+                    logMessage(`🛡️ ${actor.name} は身を固めて防御姿勢をとった。`, 'text-gray-300');
+                }
+
+                renderPartyStatus();
+                await new Promise(r => setTimeout(r, 650));
+
+                if (checkVictory()) return;
+            }
+
+            // 2. Execute Enemy Actions
+            for (const enemy of activeEnemies) {
+                if (!enemy.isAlive) continue;
+
+                const aliveParty = party.filter(p => p.hp > 0);
+                if (aliveParty.length === 0) break;
+
+                const targetHero = aliveParty[Math.floor(Math.random() * aliveParty.length)];
+                
+                const heroCmd = turnCommands.find(c => party[c.actorIndex] === targetHero);
+                const isGuarding = heroCmd && heroCmd.type === 'guard';
+
+                let damage = Math.max(5, Math.floor(enemy.atk * (0.85 + Math.random() * 0.3) - targetHero.def / 2));
+                if (isGuarding) damage = Math.max(1, Math.floor(damage * 0.25));
+
+                targetHero.hp = Math.max(0, targetHero.hp - damage);
+
+                playSound('damage');
+                triggerVFX('shake');
+                triggerDamagePopup(damage);
+                logMessage(`💥 ${enemy.name} の強力な攻撃！ ${targetHero.name} は <span class="text-red-400 font-bold">${damage}</span> のダメージを受けた！`);
+
+                renderPartyStatus();
+                await new Promise(r => setTimeout(r, 650));
+
+                if (checkDefeat()) return;
+            }
+
+            turnCommands = [];
+            currentActorIndex = 0;
+            startPartyCommandInput();
+        }
+
+        function checkVictory() {
+            if (activeEnemies.every(e => !e.isAlive)) {
+                isBattleEnded = true;
+                playSound('victory');
+                logMessage(`🎉 敵グループを全滅させた！見事な勝利！`, 'text-yellow-300 font-bold text-sm');
+
+                if (currentFloor === 5) {
+                    logMessage(`👑 【GAME CLEAR】 魔王ダークロードを絶滅させ、世界に平和が戻った！`, 'text-yellow-300 text-base font-bold my-2 animate-bounce');
+                    document.getElementById('restart-panel').classList.remove('hidden');
+                } else {
+                    document.getElementById('next-stage-panel').classList.remove('hidden');
+                }
+                return true;
+            }
+            return false;
+        }
+
+        function checkDefeat() {
+            if (party.every(h => h.hp <= 0)) {
+                isBattleEnded = true;
+                logMessage(`💀 全員が倒れてしまった... 魔王の闇が世界を覆う...`, 'text-red-500 font-bold text-base');
+                document.getElementById('restart-panel').classList.remove('hidden');
+                return true;
+            }
+            return false;
+        }
+
+        function nextFloor() {
+            currentFloor++;
+            party.forEach(hero => {
+                hero.hp = hero.maxHp;
+                hero.mp = hero.maxMp;
+            });
+            logMessage(`💊 フロア ${currentFloor} に進み、全員のHPとMPが全回復した！`, 'text-green-300 font-bold');
+            initFloor();
+        }
+
+        function restartGame() {
+            party = [
+                { id: 0, name: "勇者", job: "hero", hp: 120, maxHp: 120, mp: 40, maxMp: 40, atk: 38, def: 18, skills: [{ name: "ギガブレイク", cost: 12, type: "all_damage", power: 2.5, desc: "敵全体に雷の極大一撃" }, { name: "火炎斬り", cost: 5, type: "single_damage", power: 1.6, desc: "炎属性の単体斬撃" }] },
+                { id: 1, name: "魔法使い", job: "mage", hp: 95, maxHp: 95, mp: 70, maxMp: 70, atk: 28, def: 12, skills: [{ name: "メラゾーマ", cost: 10, type: "single_damage", power: 2.8, desc: "単体極大火炎" }, { name: "イオナズン", cost: 16, type: "all_damage", power: 1.8, desc: "敵全体大爆発魔法" }] },
+                { id: 2, name: "僧侶", job: "cleric", hp: 105, maxHp: 105, mp: 60, maxMp: 60, atk: 25, def: 15, skills: [{ name: "ベホマ", cost: 8, type: "single_heal", power: 90, desc: "味方単体大回復" }, { name: "ベホマラー", cost: 16, type: "all_heal", power: 55, desc: "味方全体回復" }] }
+            ];
+            currentFloor = 1;
+            document.getElementById('message-log').innerHTML = '<div class="text-yellow-300">★ 再び勇者たちの討伐が始まった！</div>';
+            initFloor();
+        }
+    </script>
+</body>
+</html>
